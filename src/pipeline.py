@@ -1,4 +1,4 @@
-
+import argparse
 import csv
 import logging
 from datetime import datetime
@@ -14,7 +14,7 @@ from config.settings import (
 )
 
 
-# บันทึกสถานะ Pipeline แยกจาก log ของแต่ละขั้นตอน
+# บันทึกสถานะ Pipeline แยกจาก Log ของแต่ละขั้นตอน
 logger = logging.getLogger("pipeline")
 logger.setLevel(logging.INFO)
 
@@ -36,7 +36,7 @@ if not logger.handlers:
     logger.addHandler(console_handler)
 
 
-def run_pipeline():
+def run_pipeline(force_refresh=False):
     """เรียกใช้งานทุกขั้นตอนของ Data Pipeline"""
 
     start_time = datetime.now()
@@ -44,11 +44,17 @@ def run_pipeline():
     logger.info("=" * 60)
     logger.info("PIPELINE STARTED")
 
+    if force_refresh:
+        logger.info("REFRESH MODE ENABLED")
+
     try:
+
         # STEP 1: EXTRACT
         logger.info("STEP 1: Extracting raw data...")
 
-        extraction_results = extract_all()
+        extraction_results = extract_all(
+            force_refresh=force_refresh
+        )
 
         failed_files = [
             item for item in extraction_results
@@ -84,6 +90,7 @@ def run_pipeline():
             newline="",
             encoding="utf-8"
         ) as file:
+
             quality_results = list(csv.DictReader(file))
 
         if not quality_results:
@@ -109,19 +116,36 @@ def run_pipeline():
         logger.info("STEP 4: Analysis completed")
 
         # PIPELINE SUCCESS
-        duration = (datetime.now() - start_time).total_seconds()
+        duration = (
+            datetime.now() - start_time
+        ).total_seconds()
 
         logger.info("PIPELINE COMPLETED SUCCESSFULLY")
         logger.info("Total duration: %.2f seconds", duration)
 
     except Exception:
+
         logger.exception("PIPELINE FAILED")
         raise
 
     finally:
+
         logger.info("PIPELINE RUN FINISHED")
         logger.info("=" * 60)
 
 
 if __name__ == "__main__":
-    run_pipeline()
+
+    parser = argparse.ArgumentParser(
+        description="NYC Taxi Data Pipeline"
+    )
+
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Download all raw data files again"
+    )
+
+    args = parser.parse_args()
+
+    run_pipeline(force_refresh=args.refresh)

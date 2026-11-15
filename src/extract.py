@@ -1,4 +1,3 @@
-
 import logging
 from pathlib import Path
 
@@ -11,6 +10,7 @@ from config.settings import (
     TAXI_TYPES,
     MONTHS
 )
+
 
 # ตั้งค่าการบันทึกสถานะการทำงาน
 logging.basicConfig(
@@ -42,7 +42,6 @@ def validate_parquet(file_path):
     try:
         parquet_file = pq.ParquetFile(file_path)
 
-        # ตรวจสอบจำนวนแถวในไฟล์
         row_count = parquet_file.metadata.num_rows
 
         return True, row_count
@@ -57,7 +56,7 @@ def validate_parquet(file_path):
 
 
 def download_file(url, file_path):
-    """ดาวน์โหลดไฟล์และตรวจสอบความสมบูรณ์ก่อนจัดเก็บ"""
+    """ดาวน์โหลดและตรวจสอบไฟล์ก่อนแทนที่ไฟล์เดิม"""
 
     temp_path = file_path.with_suffix(".parquet.tmp")
 
@@ -79,13 +78,13 @@ def download_file(url, file_path):
                     if chunk:
                         file.write(chunk)
 
-        # ตรวจสอบไฟล์ก่อนเปลี่ยนเป็นไฟล์จริง
+        # ตรวจสอบไฟล์ชั่วคราวก่อนนำไปใช้งาน
         is_valid, row_count = validate_parquet(temp_path)
 
         if not is_valid:
             raise ValueError("Downloaded file is not valid Parquet")
 
-        # เปลี่ยนชื่อไฟล์เมื่อดาวน์โหลดและตรวจสอบผ่านแล้ว
+        # แทนที่ไฟล์เดิมเมื่อไฟล์ใหม่ผ่านการตรวจสอบแล้ว
         temp_path.replace(file_path)
 
         logger.info(
@@ -104,19 +103,31 @@ def download_file(url, file_path):
             error
         )
 
-        # ลบไฟล์ชั่วคราวเมื่อเกิดข้อผิดพลาด
+        # ลบเฉพาะไฟล์ชั่วคราว ไม่ลบไฟล์เดิม
         if temp_path.exists():
             temp_path.unlink()
 
         return False
 
 
-def extract_all():
-    """ดาวน์โหลดข้อมูล NYC Taxi ทั้ง 24 ไฟล์"""
+def extract_all(force_refresh=False):
+    """
+    ดาวน์โหลดข้อมูล NYC Taxi ทั้ง 24 ไฟล์
+
+    force_refresh=False:
+        ใช้ไฟล์เดิมหากมีอยู่และผ่านการตรวจสอบ
+
+    force_refresh=True:
+        ดาวน์โหลดไฟล์ใหม่ทั้งหมด แม้ไฟล์เดิมจะยังใช้งานได้
+    """
 
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     results = []
+
+    if force_refresh:
+        logger.info("REFRESH MODE ENABLED")
+        logger.info("All raw data files will be downloaded again")
 
     for taxi_type in TAXI_TYPES:
 
@@ -124,17 +135,15 @@ def extract_all():
 
             file_path = get_file_path(taxi_type, month)
 
-            url = (
-                f"{BASE_URL}/"
-                f"{file_path.name}"
-            )
+            url = f"{BASE_URL}/{file_path.name}"
 
-            # ตรวจสอบว่าไฟล์มีอยู่แล้วและอ่านได้หรือไม่
+            # ตรวจสอบไฟล์เดิม
             if file_path.exists():
 
                 is_valid, row_count = validate_parquet(file_path)
 
-                if is_valid:
+                if is_valid and not force_refresh:
+
                     logger.info(
                         "Already exists, skipping: %s | Rows: %s",
                         file_path.name,
@@ -150,17 +159,25 @@ def extract_all():
 
                     continue
 
-                logger.warning(
-                    "Existing file is invalid. Downloading again: %s",
-                    file_path.name
-                )
+                elif is_valid and force_refresh:
 
-                file_path.unlink()
+                    logger.info(
+                        "Refreshing existing file: %s",
+                        file_path.name
+                    )
+
+                else:
+
+                    logger.warning(
+                        "Existing file is invalid. Downloading again: %s",
+                        file_path.name
+                    )
 
             # ดาวน์โหลดไฟล์ใหม่
             success = download_file(url, file_path)
 
             if success:
+
                 _, row_count = validate_parquet(file_path)
 
                 results.append({
@@ -171,6 +188,7 @@ def extract_all():
                 })
 
             else:
+
                 results.append({
                     "taxi_type": taxi_type,
                     "month": month,
