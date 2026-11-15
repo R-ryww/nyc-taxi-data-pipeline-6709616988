@@ -1,0 +1,5 @@
+taxi_type,total_records,missing_pickup,invalid_pickup,out_of_period,valid_records,curated_records,status
+yellow,20332093,0,0,39,20332054,20332054,PASS
+green,339807,0,0,6,339801,339801,PASS
+fhv,8119228,0,0,0,8119228,8119228,PASS
+fhvhv,120864668,0,0,0,120864668,120864668,PASS
