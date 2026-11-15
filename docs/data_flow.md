@@ -5,20 +5,20 @@
 
 ```mermaid
 flowchart TD
-    A["NYC TLC Trip Record Data"] --> B["Extract: Download 24 Parquet Files"]
-    B --> C["Validate Parquet Files"]
+    A["NYC TLC Trip Record Data"] --> B["Extract: ดาวน์โหลดข้อมูล 24 ไฟล์"]
+    B --> C["Validate Parquet Files: ตรวจสอบไฟล์"]
     C --> D[("Raw Data<br/>data/raw/")]
 
-    D --> E["Transform with DuckDB"]
+    D --> E["Transform: ประมวลผลด้วย DuckDB"]
     E --> F["Normalize Pickup Datetime"]
-    F --> G["Filter Jan–Jun 2024"]
+    F --> G["Filter: มกราคม–มิถุนายน 2024"]
     G --> H[("Curated Dataset<br/>nyc_taxi_2024_h1.parquet")]
 
     D --> I["Data Quality Checks"]
     H --> I
     I --> J["Quality Report<br/>data_quality_report.csv"]
 
-    H --> K["Usage Analysis"]
+    H --> K["Analysis: วิเคราะห์จำนวนเที่ยว"]
     K --> L["Analysis Output<br/>taxi_usage_analysis.csv"]
 
     B --> M["Pipeline Logs"]
@@ -27,30 +27,42 @@ flowchart TD
     K --> M
 ```
 
-## Pipeline Components
+## ขั้นตอนการทำงาน (Pipeline Steps)
 
-1. **Extract**
-   - Downloads monthly Parquet files from NYC TLC.
-   - Validates downloaded files before saving them.
-   - Reuses existing valid files to avoid unnecessary downloads.
+1. **Extract — การดึงข้อมูล**
+   - ดาวน์โหลดข้อมูลจากแหล่งข้อมูล NYC TLC
+   - ดึงข้อมูล Taxi ทั้ง 4 ประเภท ได้แก่ Yellow, Green, FHV และ FHVHV
+   - ดาวน์โหลดข้อมูลรายเดือนตั้งแต่มกราคมถึงมิถุนายน 2024 รวมทั้งหมด 24 ไฟล์
+   - ตรวจสอบความถูกต้องของไฟล์ด้วย Parquet Validation ก่อนนำไปใช้งาน
+   - เก็บไฟล์ต้นฉบับไว้ใน data/raw/
 
-2. **Transform**
-   - Uses DuckDB to process large Parquet datasets.
-   - Standardizes pickup datetime columns.
-   - Filters records to the January–June 2024 period.
-   - Saves the curated dataset as Parquet.
+2. **Transform — การประมวลผลข้อมูล**
+   - ใช้ DuckDB อ่านและประมวลผลข้อมูลจากไฟล์ Parquet
+   - รวมข้อมูลจาก Taxi ทั้ง 4 ประเภทด้วย UNION ALL
+   - ปรับชื่อและรูปแบบ Pickup Datetime ให้เป็นมาตรฐานเดียวกัน
+   - กรองข้อมูลให้อยู่ในช่วงวันที่ 1 มกราคม ถึงก่อนวันที่ 1 กรกฎาคม 2024
+   - ตัดรายการที่มี Pickup Datetime เป็นค่าว่างหรือไม่ถูกต้องออก
+   - บันทึกผลลัพธ์เป็น nyc_taxi_2024_h1.parquet ใน data/curated/
 
-3. **Data Quality**
-   - Checks missing and invalid pickup timestamps.
-   - Checks records outside the analysis period.
-   - Compares valid raw record counts with curated record counts.
-   - Saves results as a CSV report.
+3. **Data Quality — การตรวจสอบคุณภาพข้อมูล**
+   - ตรวจสอบข้อมูลต้นฉบับและเปรียบเทียบกับ Curated Dataset โดยตรวจสอบ:
+   - Missing Pickup: จำนวนรายการที่ไม่มี Pickup Datetime
+   - Invalid Pickup: จำนวนรายการที่ไม่สามารถแปลงเป็น Timestamp ได้
+   - Out-of-Period: จำนวนรายการที่อยู่นอกช่วงเวลาที่กำหนด
+   - Valid Records: จำนวนรายการที่ผ่านเงื่อนไขการกรอง
+   - Curated Records: จำนวนรายการใน Curated Dataset
+   - ผลการตรวจสอบจะถูกบันทึกใน outputs/quality_reports/data_quality_report.csv โดยแต่ละ Taxi Type ต้องมีจำนวน Valid Records ตรงกับ Curated Records จึงจะผ่านการตรวจสอบ (PASS)
 
-4. **Analysis**
-   - Counts records for each taxi type.
-   - Calculates each taxi type's percentage of total records.
-   - Ranks taxi types by usage.
 
-5. **Logging**
-   - Records pipeline execution steps and status.
-   - Records successful completion or failure.
+4. **Analysis — การวิเคราะห์ข้อมูล**
+   - ใช้ DuckDB วิเคราะห์ข้อมูลจาก Curated Dataset
+   - นับจำนวนเที่ยวของ Taxi แต่ละประเภท
+   - คำนวณสัดส่วนการใช้งาน (Percentage) และจัดอันดับ (Usage Rank)
+   - บันทึกผลลัพธ์ใน outputs/analysis/taxi_usage_analysis.csv
+   - ผลการวิเคราะห์พบว่า FHVHV เป็น Taxi Type ที่มีจำนวนรายการมากที่สุด ในช่วงเวลาที่ศึกษา
+
+5. **Pipeline Logs — การบันทึกสถานะ**
+   - บันทึกสถานะการทำงานของแต่ละขั้นตอน
+   - บันทึกข้อผิดพลาดที่เกิดขึ้นระหว่างการทำงาน
+   - บันทึกระยะเวลาการทำงานทั้งหมดของ Pipeline
+   - เก็บ Log ไว้ในโฟลเดอร์ logs/
